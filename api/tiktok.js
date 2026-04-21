@@ -1,5 +1,5 @@
 export default async function handler(req, res) {
-    // CORS Headers
+    // CORS headers for browser access
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -9,10 +9,8 @@ export default async function handler(req, res) {
     }
 
     const username = req.query.username;
-
     if (!username) {
         return res.status(400).json({
-            success: false,
             error: "Username parameter is required",
             developer: "WASIF ALI",
             telegram: "@FREEHACKS95"
@@ -21,70 +19,51 @@ export default async function handler(req, res) {
 
     const cleanUsername = username.replace(/@/g, '').trim();
 
-    const sources = [
-        {
-            url: `https://apis.prexzyvilla.site/stalk/ttstalk?user=${cleanUsername}`,
-            parse: (data) => data?.status ? data.data : null
-        },
-        {
-            url: `https://api.siputzx.my.id/api/stalk/tiktok?username=${cleanUsername}`,
-            parse: (data) => data?.status ? data.data : null
-        },
-        {
-            url: `https://api.alyachan.my.id/api/tiktok?username=${cleanUsername}`,
-            parse: (data) => data?.status ? data.data : data?.result
-        }
+    // Two working sources (kept internal, never exposed)
+    const sourceUrls = [
+        `https://apis.prexzyvilla.site/stalk/ttstalk?user=${cleanUsername}`,
+        `https://api.siputzx.my.id/api/stalk/tiktok?username=${cleanUsername}`
     ];
 
-    for (const source of sources) {
+    // Helper function to fetch from a URL
+    async function fetchFromUrl(url) {
         try {
             const controller = new AbortController();
             const timeoutId = setTimeout(() => controller.abort(), 10000);
-            
-            const response = await fetch(source.url, { signal: controller.signal });
+            const response = await fetch(url, { signal: controller.signal });
             clearTimeout(timeoutId);
             
-            if (!response.ok) continue;
-            
+            if (!response.ok) return null;
             const data = await response.json();
-            const parsed = source.parse(data);
             
-            if (parsed) {
-                const user = parsed.user || parsed;
-                const stats = parsed.stats || user.stats || {};
-                
-                return res.json({
-                    success: true,
-                    username: user.uniqueId || user.username || cleanUsername,
-                    nickname: user.nickname || user.name || '-',
-                    avatar: user.avatarLarger || user.avatarMedium || user.avatar || '',
-                    verified: user.verified || false,
-                    private: user.privateAccount || user.isPrivate || false,
-                    signature: user.signature || user.bio || '',
-                    stats: {
-                        followers: stats.followerCount || stats.followers || 0,
-                        following: stats.followingCount || stats.following || 0,
-                        videos: stats.videoCount || stats.videos || 0,
-                        likes: stats.heartCount || stats.diggCount || stats.likes || 0
-                    },
-                    details: {
-                        userId: user.id || '-',
-                        region: user.region || user.country || '-',
-                        language: user.language || '-',
-                        created: user.createTime ? new Date(user.createTime * 1000).toISOString() : null
-                    },
-                    developer: "WASIF ALI",
-                    telegram: "@FREEHACKS95"
-                });
+            // Both APIs wrap the useful data in a 'data' field when status is true
+            if (data && data.status === true && data.data) {
+                return data.data;
             }
-        } catch (e) {
-            console.error('Source failed:', e.message);
+            return null;
+        } catch (error) {
+            return null;
         }
     }
 
-    return res.status(404).json({
-        success: false,
-        error: "Profile not found",
+    // Try sources sequentially
+    let profileData = null;
+    for (const url of sourceUrls) {
+        profileData = await fetchFromUrl(url);
+        if (profileData) break; // Stop at the first success
+    }
+
+    if (!profileData) {
+        return res.status(404).json({
+            error: "Profile not found",
+            developer: "WASIF ALI",
+            telegram: "@FREEHACKS95"
+        });
+    }
+
+    // Success: Return the exact structure but with added credits
+    return res.json({
+        ...profileData,
         developer: "WASIF ALI",
         telegram: "@FREEHACKS95"
     });
